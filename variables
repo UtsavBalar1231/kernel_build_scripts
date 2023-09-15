@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2034
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2023 Utsav Balar
+# Copyright (C) 2023 Vicharak Computers LLP
+
+# Date for boot image
+DATE=$(date +"%d.%m.%y")
+
+# Configs directory path
+CFG_DIR=${SCRIPT_DIR}/vicharak
+
+# Kernel out directory path
+OUT_DIR=${SCRIPT_DIR}/out
+
+# Set boot image name
+FILENAME="${OUT_DIR}/boot-${DATE}.img"
+
+# Set default extlinux config
+EXTLINUX_CONF="${SCRIPT_DIR}/extlinux/vicharak.conf"
+
+# Get kernel version
+function get_kernel_version() {
+	if [ -f "${OUT_DIR}"/include/config/kernel.release ]; then
+		KERNEL_VERSION=$(cat "${OUT_DIR}"/include/config/kernel.release 2>/dev/null)
+	else
+		local version patchlevel sublevel
+		version=$(grep -w "VERSION =" "${SCRIPT_DIR}"/Makefile | awk '{print $3}')
+		patchlevel=$(grep -w "PATCHLEVEL =" "${SCRIPT_DIR}"/Makefile | awk '{print $3}')
+		sublevel=$(grep -w "SUBLEVEL =" "${SCRIPT_DIR}"/Makefile | awk '{print $3}')
+
+		KERNEL_VERSION="${version}.${patchlevel}.${sublevel}"
+	fi
+
+	echo "${KERNEL_VERSION}"
+}
+
+# Kernel version
+KERNEL_VERSION=$(get_kernel_version)
+
+# Default Clang toolchain directory
+CLANG_DIR=${SCRIPT_DIR}/../clang
+
+# Default Clang version
+DEFAULT_CLANG_VERSION=17
+
+# Default GCC toolchain directory
+GCC64_DIR=${SCRIPT_DIR}/../gcc-"${DEVICE_ARCH}"
+GCC32_DIR=${SCRIPT_DIR}/../gcc32
+
+# set PS3 prompt
+PS3="Select device: "
