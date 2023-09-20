@@ -76,7 +76,7 @@ for option in "${OPTIONS[@]}"; do
 		export DEVICE_MAKEFILE
 
 		ln -f "${DEVICE_MAKEFILE}" "${SCRIPT_DIR}"/vicharak/.device.mk
-		source "${SCRIPT_DIR}"/.device.mk
+		source "${SCRIPT_DIR}"/vicharak/.device.mk
 
 		print_info
 		;;
