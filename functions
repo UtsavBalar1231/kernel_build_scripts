@@ -4,14 +4,32 @@
 # Copyright (C) 2023 Utsav Balar
 # Copyright (C) 2023 Vicharak Computers LLP
 #
+# Core functions for the Vicharak kernel build script
+#
 
+# Source common utility functions from the "vicharak/utils" script.
+# This script must be in the same directory as the "vicharak" script
 # shellcheck disable=SC1090
-source "${SCRIPT_DIR}"/vicharak/utils
 
-# Check bootimage size and exit if it is less than 50MB
+source "${SCRIPT_DIR}"/utils
+
+# Create an extlinux configuration file based on device-specific parameters.
+function create_extlinux_config() {
+	local extlinux_dir=${1}
+
+	echo "label Vicharak Linux Kernel" >"${extlinux_dir}"/extlinux.conf
+	# shellcheck disable=SC2129
+	echo "kernel /Image-${KERNEL_VERSION}" >>"${extlinux_dir}"/extlinux.conf
+	echo "fdt /${DEVICE_DTB_FILE}.dtb" >>"${extlinux_dir}"/extlinux.conf
+	echo "append earlycon=uart8250,mmio32,0xff1a0000 swiotlb=65536 coherent_pool=1m earlyprintk console=ttyS2,1500000n8 rw root=PARTUUID=614e0000-0000-4b53-8000-1d28000054a9 rootfstype=ext4 init=/sbin/init rootwait audit=0 splash" >>"${extlinux_dir}"/extlinux.conf
+}
+
+# Check if the boot image file exists and if its size is less than 30MB.
+# If so, exit with an error message; otherwise, print a success message.
 function check_image_build() {
-	if [ -f "${FILENAME}" ] && [ "$(stat -c%s "${FILENAME}")" -lt 50000000 ]; then
-		exit_with_error "Boot image size is less than 50MB"
+	if [[ -f "${FILENAME}" ]] &&
+		[[ "$(stat -c%s "${FILENAME}")" -lt $((30 * 1024 * 1024)) ]]; then
+		exit_with_error "Boot image size is less than 30MB"
 	else
 		print "----------------------------------------------------------------"
 		print "Build successful!"
@@ -19,8 +37,10 @@ function check_image_build() {
 	fi
 }
 
-# Pack Image into boot image using extlinux config
-# and copy kernel image and dtb file to boot image
+# Pack the kernel image and device tree binary (dtb) file into a boot image
+# using extlinux as the default bootloader method for kernel loading on ARM64
+# devices. Also, copy other required files.
+# mtools package is used for copying files into the boot image
 function pack_image() {
 	delete_file "${FILENAME}"
 
@@ -30,14 +50,8 @@ function pack_image() {
 
 	mkfs.fat -n "boot" -C "${FILENAME}" $((DEVICE_KERNEL_IMAGE_FILE_SIZE * 1024))
 
-	local extlinux_dir
 	extlinux_dir=$(mktemp -d)
-
-	echo "label Vicharak Linux Kernel" >"${extlinux_dir}"/extlinux.conf
-	# shellcheck disable=SC2129
-	echo "kernel /Image-${KERNEL_VERSION}" >>"${extlinux_dir}"/extlinux.conf
-	echo "fdt /${DEVICE_DTB_FILE}.dtb" >>"${extlinux_dir}"/extlinux.conf
-	echo "append earlycon=uart8250,mmio32,0xff1a0000 swiotlb=65536 coherent_pool=1m earlyprintk console=ttyS2,1500000n8 rw root=PARTUUID=614e0000-0000-4b53-8000-1d28000054a9 rootfstype=ext4 init=/sbin/init rootwait audit=0 splash" >>"${extlinux_dir}"/extlinux.conf
+	create_extlinux_config "${extlinux_dir}"
 
 	cd "${OUT_DIR}" || exit
 
@@ -48,10 +62,10 @@ function pack_image() {
 	mmd -i "${FILENAME}" ::/extlinux
 	mcopy -i "${FILENAME}" -s "${extlinux_dir}/extlinux.conf" ::/extlinux/extlinux.conf
 	mcopy -i "${FILENAME}" -s "${DEVICE_KERNEL_IMAGE_FILE}" ::/Image-"${KERNEL_VERSION}"
-	mcopy -i "${FILENAME}" -s "${SCRIPT_DIR}"/logo.bmp ::
-	mcopy -i "${FILENAME}" -s "${SCRIPT_DIR}"/logo_kernel.bmp ::
+	mcopy -i "${FILENAME}" -s "${KERNEL_DIR}"/logo.bmp ::
+	mcopy -i "${FILENAME}" -s "${KERNEL_DIR}"/logo_kernel.bmp ::
 
-	if [ -d "${DEVICE_DTB_DIR}"/overlays ]; then
+	if [[ -d "${DEVICE_DTB_DIR}"/overlays ]]; then
 		mmd -i "${FILENAME}" ::/overlays
 
 		for dtbo in "${DEVICE_DTB_DIR}"/overlays/*; do
@@ -65,10 +79,11 @@ function pack_image() {
 
 	check_image_build
 
-	cd "${SCRIPT_DIR}" || exit
+	cd "${KERNEL_DIR}" || exit
 }
 
-# Cleanup previous build files if any
+# Clean up previous build files and directories to prepare for a fresh build.
+# these includes dtb, bootimage, Image, extlinux and modules
 function cleanup() {
 	source_toolchain
 
@@ -79,24 +94,92 @@ function cleanup() {
 	delete_dir "${OUT_DIR}"/modules_"${DEVICE_NAME}"
 
 	# shellcheck disable=SC2086
-	make ${args} clean && make ${args} mrproper
+	make ${kernel_args} clean && make ${kernel_args} mrproper
 }
 
-# Check if the GLIBC version is greater than 2.33
-# This is required to use latest GCC and Clang compilers
+# Check the version of the GNU C Library (GLIBC) and determine if it meets
+# the required version. This is required to use latest GCC and Clang compilers
+# because the newer GCC requires >= 2.34 glibc
 function new_system_glibc() {
 	local glibc_version
 	glibc_version=$(ldd --version | awk '/ldd/{print $NF}' | sed 's/\.//g')
 
 	# check if GLIBC version is greater than 2.33
-	if [ "${glibc_version}" -gt 233 ]; then
+	if [[ "${glibc_version}" -gt 233 ]]; then
 		return 0
+	fi
+
+	return 1
+}
+
+# Helper function to download and extract GCC or Clang toolchains
+# Args:
+#   $1: Toolchain name (e.g., "GCC" or "Clang")
+#   $2: Toolchain version (e.g., "10.0.0" or "12")
+#   $3: Repository source ("github" or "gitlab")
+#   $4: Repository owner
+#   $5: Repository name
+#   $6: Destination directory
+function download_toolchain() {
+	local toolchain_name="$1"
+	local toolchain_version="$2"
+	local repo_source="$3"
+	local repo_owner="$4"
+	local repo_name="$5"
+	local destination_dir="$6"
+
+	if [[ ! -d "${destination_dir}" ]]; then
+		mkdir -p "${destination_dir}"
+	fi
+
+	local toolchain_file="${destination_dir}/${toolchain_name}-${toolchain_version}.tar.gz"
+
+	if [[ -d "${destination_dir}" && -f "${toolchain_file}" ]]; then
+		print "${toolchain_name} ${toolchain_version} already downloaded."
 	else
-		return 1
+		print "Downloading ${toolchain_name} ${toolchain_version}..."
+
+		local download_url=""
+
+		if [[ "${repo_source}" == "github" ]]; then
+			download_url="https://github.com/${repo_owner}/${repo_name}/archive/${toolchain_version}.tar.gz"
+		elif [[ "${repo_source}" == "gitlab" ]]; then
+			download_url="https://gitlab.com/${repo_owner}/${repo_name}/-/archive/${toolchain_version}/${repo_name}-${toolchain_version}.tar.gz"
+		else
+			exit_with_error "Invalid repository source: ${repo_source}"
+		fi
+
+		wget -O "${toolchain_file}" "${download_url}" -q --show-progress --progress=bar:force 2>&1
+
+		# shellcheck disable=SC2181
+		if [[ $? -ne 0 ]]; then
+			exit_with_error "Failed to download ${toolchain_name} ${toolchain_version}."
+		fi
+
+		print "Downloaded ${toolchain_name} ${toolchain_version} successfully."
+
+		print "Extracting ${toolchain_name} ${toolchain_version}..."
+
+		tar -xzf "${toolchain_file}" -C "${destination_dir}"
+		# shellcheck disable=SC2181
+		if [[ $? -ne 0 ]]; then
+			exit_with_error "Failed to extract ${toolchain_name} ${toolchain_version}."
+		fi
+
+		mv "${destination_dir}"/"${repo_name}"-"${toolchain_version}"/* "${destination_dir}"
+		delete_file "${toolchain_file}"
+		delete_dir "${destination_dir}"/"${repo_name}"-"${toolchain_version}"
+
+		print "Extracted ${toolchain_name} ${toolchain_version} successfully."
 	fi
 }
 
+# Download and set up a standalone clang toolchain from a specified source.
 function get_clang_toolchain() {
+	if [[ -z "${1}" ]]; then
+		exit_with_error "Failed to get clang toolchain"
+	fi
+
 	local clang_version
 	clang_version=${1}
 
@@ -104,27 +187,18 @@ function get_clang_toolchain() {
 		exit_with_error "Clang version Not set!"
 	fi
 
-	if [ ! -d "${CLANG_DIR}" ]; then
-		mkdir -p "${CLANG_DIR}"
-
-		# check if prebuilt clang is installed
-		print "Downloading clang: ${clang_version}"
-		clang_file=$(mktemp)
-		wget -O "${clang_file}" \
-			https://gitlab.com/ThankYouMario/android_prebuilts_clang-standalone/-/archive/"${clang_version}"/android_prebuilts_clang-standalone-"${clang_version}".tar.gz \
-			-q --show-progress --progress=bar:force 2>&1
-
-		tar -xzf "${clang_file}" -C "${CLANG_DIR}"
-		mv "${CLANG_DIR}"/android_prebuilts_clang-standalone-"${clang_version}"/* "${CLANG_DIR}"
-
-		delete_file "${clang_file}"
+	if [[ ! -d "${CLANG_DIR}" ]]; then
+		download_toolchain "Clang ${clang_version}" "${clang_version}" \
+			"gitlab" "ThankYouMario" "android_prebuilts_clang-standalone" \
+			"${CLANG_DIR}"
 	else
 		local local_clang_version
-		if [ -f "${CLANG_DIR}"/AndroidVersion.txt ]; then
+		if [[ -f "${CLANG_DIR}"/AndroidVersion.txt ]]; then
 			local_clang_version=$(sed '2,$d' "${CLANG_DIR}"/AndroidVersion.txt | cut -d '.' -f 1)
 		fi
 
-		if [[ ${local_clang_version} -ne ${clang_version} ]] || [ -z "${local_clang_version}" ]; then
+		if [[ ${local_clang_version} -ne ${clang_version} ]] ||
+			[[ -z "${local_clang_version}" ]]; then
 			delete_dir "${CLANG_DIR}"
 
 			get_clang_toolchain "${clang_version}"
@@ -132,7 +206,8 @@ function get_clang_toolchain() {
 	fi
 }
 
-# Set environment variables for clang
+# Set up environment variables for building with Clang,
+# including the path to the toolchain.
 function build_clang() {
 	local clang_version
 	clang_version=${DEFAULT_CLANG_VERSION}
@@ -150,6 +225,7 @@ function build_clang() {
 		get_clang_toolchain "${clang_version}"
 	fi
 
+	# set up environment variables, so standalone clang can be used
 	if [ -d "${CLANG_DIR}" ]; then
 		print "----------------------------------------------------------------"
 		print "Using standalone clang toolchain: ${clang_version}"
@@ -157,60 +233,54 @@ function build_clang() {
 
 		PATH="${CLANG_DIR}"/bin:${PATH}
 		LD_LIBRARY_PATH="${CLANG_DIR}"/lib:${LD_LIBRARY_PATH}
+
 		export PATH
 	fi
 
-	if ! is_set "${CROSS_COMPILE}" && [ "${DEVICE_ARCH}" == "arm64" ]; then
+	if ! is_set "${CROSS_COMPILE}" && [[ "${DEVICE_ARCH}" == "arm64" ]]; then
 		export CROSS_COMPILE=aarch64-linux-gnu-
 	fi
 
-	args="ARCH=${DEVICE_ARCH} \
+	kernel_args="ARCH=${DEVICE_ARCH} \
 		O=${OUT_DIR} \
 		LLVM=1 \
 		LLVM_IAS=1 \
 		-j$(nproc --all)"
 
-	export args
+	export kernel_args
 }
 
-# Set environment variables for gcc
+# Set up environment variables for building with GCC,
+# including the path to the toolchain.
 function build_gcc() {
+	# Check if GLIBC version is greater than 2.33
 	if new_system_glibc; then
-		if [ ! -d "${GCC64_DIR}" ]; then
-
-			if [ "${DEVICE_ARCH}" == "arm64" ]; then
-				print "Downloading baremetal gcc-${DEVICE_ARCH}"
-				wget -q --show-progress --progress=dot -O /tmp/gcc-"${DEVICE_ARCH}".zip \
-					https://github.com/mvaisakh/gcc-"${DEVICE_ARCH}"/archive/refs/heads/gcc-master.zip
-
-				unzip -qq /tmp/gcc-"${DEVICE_ARCH}".zip -d "${GCC64_DIR}"
-				mv "${GCC64_DIR}"/gcc-"${DEVICE_ARCH}"-gcc-master "${GCC64_DIR}"
-				delete_file /tmp/gcc-"${DEVICE_ARCH}".zip
+		if [[ ! -d "${GCC64_DIR}" ]]; then
+			if [[ "${DEVICE_ARCH}" == "arm64" ]]; then
+				download_toolchain "Baremetal GCC ${DEVICE_ARCH}" \
+					"gcc-master" "github" "mvaisakh" \
+					"mvaisakh/gcc-${DEVICE_ARCH}" "${GCC64_DIR}"
 
 				export PATH="${GCC64_DIR}"/bin:${PATH}
 				export CROSS_COMPILE=aarch64-elf-
 			fi
 		fi
-		if [ ! -d "${GCC32_DIR}" ]; then
-			if [ "${DEVICE_ARCH}" == "arm64" ]; then
-				print "Downloading baremetal gcc-arm"
-				wget -q --show-progress --progress=dot -O /tmp/gcc-arm.zip \
-					https://github.com/mvaisakh/gcc-arm/archive/refs/heads/gcc-master.zip
-
-				unzip -qq /tmp/gcc-arm.zip -d "${GCC32_DIR}"
-				mv "${GCC32_DIR}"/gcc-arm-gcc-master "${GCC32_DIR}"
-				delete_file /tmp/gcc-arm.zip
+		if [[ ! -d "${GCC32_DIR}" ]]; then
+			if [[ "${DEVICE_ARCH}" == "arm64" ]]; then
+				download_toolchain "Baremetal GCC ARM32" \
+					"gcc-master" "github" "mvaisakh" "mvaisakh/gcc-arm" \
+					"${GCC32_DIR}"
 
 				export PATH="${GCC32_DIR}"/bin:${PATH}
 				export CROSS_COMPILE_COMPAT=arm-eabi-
 			fi
 		fi
 
-		if ! is_set ${CROSS_COMPILE} && [ "${DEVICE_ARCH}" == "arm64" ]; then
+		if ! is_set ${CROSS_COMPILE} && [[ "${DEVICE_ARCH}" == "arm64" ]]; then
 			export CROSS_COMPILE=aarch64-linux-gnu-
 		fi
 
-		args="ARCH=${DEVICE_ARCH} \
+		kernel_args="ARCH=${DEVICE_ARCH} \
 			O=${OUT_DIR} \
 			-j$(nproc --all)"
 	else
@@ -218,63 +288,63 @@ function build_gcc() {
 		print "Using System GCC"
 		print "----------------------------------------------------------------"
 
-		if ! is_set ${CROSS_COMPILE} && [ "${DEVICE_ARCH}" == "arm64" ]; then
+		if ! is_set ${CROSS_COMPILE} && [[ "${DEVICE_ARCH}" == "arm64" ]]; then
 			export CROSS_COMPILE=aarch64-linux-gnu-
 		fi
 
-		if command -v gcc-arm-linux-gnueabi &>/dev/null && [ "${DEVICE_ARCH}" == "arm64" ]; then
+		if command -v gcc-arm-linux-gnueabi &>/dev/null && [[ "${DEVICE_ARCH}" == "arm64" ]]; then
 			export CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
 		fi
 
-		args="ARCH=${DEVICE_ARCH} \
+		kernel_args="ARCH=${DEVICE_ARCH} \
 			O=${OUT_DIR} \
 			-j$(nproc --all)"
 	fi
 
-	export args
+	export kernel_args
 }
 
-# Make performance defconfig with optional argument
-# If argument is passed, merge it with defconfig
+# Create the kernel configuration (defconfig) based on the performance options
+# and merge it with the config fragment if specified.
 function build_config() {
 	# shellcheck disable=SC2086
-	make ${args} "${DEVICE_DEFCONFIG}"
+	make ${kernel_args} "${DEVICE_DEFCONFIG}"
 
 	local arch
-	if [ "${DEVICE_ARCH}" == "x86_64" ]; then
+	if [[ "${DEVICE_ARCH}" == "x86_64" ]]; then
 		arch="x86"
 	else
 		arch="${DEVICE_ARCH}"
 	fi
 
-	if [ ! -f "${SCRIPT_DIR}/arch/${arch}/configs/${DEVICE_CONFIG_FRAGMENT}" ]; then
+	if [[ ! -f "${KERNEL_DIR}/arch/${arch}/configs/${DEVICE_CONFIG_FRAGMENT}" ]]; then
 		print "----------------------------------------------------------------"
 		print "${DEVICE_CONFIG_FRAGMENT} File not found!"
 		print "----------------------------------------------------------------"
 	else
-		cat "${SCRIPT_DIR}/arch/${arch}/configs/${DEVICE_CONFIG_FRAGMENT}" >>"${OUT_DIR}"/.config
+		cat "${KERNEL_DIR}/arch/${arch}/configs/${DEVICE_CONFIG_FRAGMENT}" >>"${OUT_DIR}"/.config
 	fi
 
 	if is_enabled "${PERF_BUILD}"; then
-		cat "${SCRIPT_DIR}"/arch/"${arch}"/configs/rockchip_performance.config >>"${OUT_DIR}"/.config
+		cat "${KERNEL_DIR}"/arch/"${arch}"/configs/rockchip_performance.config >>"${OUT_DIR}"/.config
 	fi
 }
 
-# Make modules and gz compress them to modules_${DEVICE_NAME} directory
+# Build kernel modules and create a GZIP compressed archive of the modules.
 function build_modules() {
 	# shellcheck disable=SC2086
-	make modules_install ${args} INSTALL_MOD_PATH="${OUT_DIR}"/modules_"${DEVICE_NAME}"
+	make modules_install ${kernel_args} INSTALL_MOD_PATH="${OUT_DIR}"/modules_"${DEVICE_NAME}"
 	tar -czf "${OUT_DIR}"/modules_"${DEVICE_NAME}".tar.gz -C "${OUT_DIR}"/modules_"${DEVICE_NAME}" .
 }
 
-# Make kernel deb package
+# Build a Debian package for the kernel
 function build_kerneldeb() {
 	source_toolchain
 	build_config
 	build_kernel_deb_package
 }
 
-# Build deb package for kernel
+# Build a Debian package for the kernel with the specified parameters.
 function build_kernel_deb_package() {
 	local build_id
 	local deb_files
@@ -284,12 +354,12 @@ function build_kernel_deb_package() {
 	build_id="$(date +%Y%m%d)-${build_device_name}"
 
 	# shellcheck disable=SC2086
-	make ${args} bindeb-pkg \
+	make ${kernel_args} bindeb-pkg \
 		KDEB_PKGVERSION="${build_id}" \
 		RK_KERNEL_DTS="${DEVICE_DTB_FILE}" \
 		LOCALVERSION="-${build_device_name}"
 
-	deb_files=$(find "${SCRIPT_DIR}" -maxdepth 1 -name "linux-*")
+	deb_files=$(find "${KERNEL_DIR}" -maxdepth 1 -name "linux-*")
 
 	if is_set "${deb_files}"; then
 		for deb_file in ${deb_files}; do
@@ -300,19 +370,20 @@ function build_kernel_deb_package() {
 	fi
 }
 
-# Build dtbs
+# Build device tree blobs (dtbs) for the kernel.
 function build_dtbs() {
 	source_toolchain
 
-	if [ ! -f "${OUT_DIR}"/.config ]; then
+	if [[ ! -f "${OUT_DIR}"/.config ]]; then
 		build_config
 	fi
 
 	# shellcheck disable=SC2086
-	make dtbs ${args}
+	make dtbs ${kernel_args}
 }
 
-# Set environment variables for clang or gcc
+# Determine and set up the selected toolchain (Clang or GCC) for building the
+# kernel.
 function source_toolchain() {
 	if is_enabled "${CLANG_BUILD}"; then
 		print "----------------------------------------------------------------"
@@ -327,14 +398,15 @@ function source_toolchain() {
 	fi
 }
 
-# Make kernel image
+# Build the kernel image and
+# optionally modules, kernel deb package, or pack it into a boot image.
 function build_kernel() {
 	source_toolchain
 
 	build_config
 
 	# shellcheck disable=SC2086
-	make ${args} && make ${args} dtbs
+	make ${kernel_args} && make ${kernel_args} dtbs
 
 	if is_enabled "${MODULES_BUILD}"; then
 		build_modules
@@ -349,7 +421,7 @@ function build_kernel() {
 	fi
 }
 
-# Update defconfig with savedefconfig command
+# Update the kernel configuration (defconfig) with savedefconfig.
 function update_defconfig() {
 	if is_enabled "${CLANG_BUILD}"; then
 		build_clang
@@ -358,33 +430,34 @@ function update_defconfig() {
 	fi
 
 	# shellcheck disable=SC2086
-	make ${args} "${DEVICE_DEFCONFIG}"
+	make ${kernel_args} "${DEVICE_DEFCONFIG}"
 	# shellcheck disable=SC2086
-	make ${args} savedefconfig
+	make ${kernel_args} savedefconfig
 
 	local arch
-	if [ "${DEVICE_ARCH}" == "x86_64" ]; then
+	if [[ "${DEVICE_ARCH}" == "x86_64" ]]; then
 		arch="x86"
 	else
 		arch="${DEVICE_ARCH}"
 	fi
 
-	mv "${OUT_DIR}"/defconfig "${SCRIPT_DIR}"/arch/"${arch}"/configs/"${DEVICE_DEFCONFIG}"
+	mv "${OUT_DIR}"/defconfig "${KERNEL_DIR}"/arch/"${arch}"/configs/"${DEVICE_DEFCONFIG}"
 	print "----------------------------------------------------------------"
 	print "Updated ${DEVICE_DEFCONFIG} with savedefconfig"
 	print "----------------------------------------------------------------"
 }
 
+# Print information about the selected device and build configuration.
 function print_info() {
 	# shellcheck disable=SC1090,SC1091
-	if [ -f "${CFG_DIR}/.device.mk" ]; then
-		source "${CFG_DIR}/.device.mk"
+	if [[ -f "${SCRIPT_DIR}/.device.mk" ]]; then
+		source "${SCRIPT_DIR}/.device.mk"
 	else
 		lunch_device
 	fi
 
 	print "----------------------------------------------------------------"
-	print "Device Building Information"
+	print "Device Information"
 	print "----------------------------------------------------------------"
 
 	if ! is_set "${DEVICE_DEFCONFIG}"; then
@@ -428,9 +501,10 @@ function print_info() {
 	usage
 }
 
+# Allow the user to select a device configuration file interactively.
 function set_device_config() {
 	print "----------------------------------------------------------------"
-	cd "${CFG_DIR}" || exit 1
+	cd "${SCRIPT_DIR}" || exit 1
 	printf "\e[1;32m"
 	select device in *.mk; do
 		DEVICE_MAKEFILE="${device}"
@@ -441,29 +515,30 @@ function set_device_config() {
 	print "----------------------------------------------------------------"
 }
 
+# Check if a device configuration file exists; if not, prompt the user to set one.
 function check_lunch_device() {
-	if [ ! -f "${CFG_DIR}/.device.mk" ]; then
+	if [[ ! -f "${SCRIPT_DIR}/.device.mk" ]]; then
 		lunch_device
 	fi
 }
 
+# Prompt the user to select a device configuration file and set it as the
+# active configuration.
 function lunch_device() {
-	delete_file "${CFG_DIR}/.device.mk"
+	delete_file "${SCRIPT_DIR}/.device.mk"
 
 	set_device_config
 
-	cp "${CFG_DIR}/${DEVICE_MAKEFILE}" "${CFG_DIR}/.device.mk"
+	cp "${SCRIPT_DIR}/${DEVICE_MAKEFILE}" "${SCRIPT_DIR}/.device.mk"
 
 	# shellcheck disable=SC1090,SC1091
-	source "${CFG_DIR}/.device.mk"
+	source "${SCRIPT_DIR}/.device.mk"
 
 	if ! is_set "${DEVICE_DEFCONFIG}"; then
-		print "----------------------------------------------------------------"
-		print "Device defconfig not set!"
-		print "----------------------------------------------------------------"
-		exit 1
+		exit_with_error "Device defconfig not set!"
 	fi
 
 	source_toolchain
 	build_config
 }
+# End of script

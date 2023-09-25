@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: MIT
 # Copyright (C) 2020-23 Utsav Balar <utsavbalar1231@gmail.com>
 # Copyright (C) 2023 Vicharak Computers LLP
-# Version: 5.0
+# Version: 5.1
 
 # Set bash shell options
 set -eE
@@ -15,38 +15,42 @@ export LC_ALL=C
 # Command used for this script
 CMD=$(realpath "${0}")
 # Kernel directory path
-SCRIPT_DIR=$(dirname "${CMD}")/..
+SCRIPT_DIR=$(dirname "${CMD}")
+export SCRIPT_DIR
 
-if [ ! -d "${SCRIPT_DIR}"/vicharak ]; then
-	echo "${SCRIPT_DIR}"/vicharak does not exist
+echo "script called from ${SCRIPT_DIR}"
+
+if [ ! -d "${SCRIPT_DIR}" ]; then
+	echo "${SCRIPT_DIR} does not exist"
 	exit 1
 fi
 
-source "${SCRIPT_DIR}"/vicharak/variables
-source "${SCRIPT_DIR}"/vicharak/utils
-source "${SCRIPT_DIR}"/vicharak/functions
-if [ -f "${SCRIPT_DIR}"/vicharak/.device.mk ]; then
-	source "${SCRIPT_DIR}"/vicharak/.device.mk
+source "${SCRIPT_DIR}"/variables
+source "${SCRIPT_DIR}"/utils
+source "${SCRIPT_DIR}"/functions
+if [ -f "${SCRIPT_DIR}"/.device.mk ]; then
+	source "${SCRIPT_DIR}"/.device.mk
 fi
 
-# Usage function for this script to show help
+# Usage function to provide help on script options
 function usage() {
-	print "--------------------------------------------------------------------------------"
-	print "Build script for Vicharak kernel"
-	print "Usage: ${0} [OPTIONS]"
-	print "Options:"
-	print "  lunch            | -l   \tLunch device to setup environment"
-	print "  info             | -i   \tShow current kernel setup information"
-	print "  clean            | -c   \tCleanup the kernel build files"
-	print "  kernel           | -k   \tBuild linux kernel image"
-	print "  kerneldeb        | -K   \tBuild linux kernel debian package"
-	print "  update_defconfig | -u   \tUpdate defconfig with latest changes"
-	print "  help             | -h   \tShow this help"
+	print "─────────────────────────────────────────────────────────────────────"
+	print "          Vicharak Kernel Build Script - Usage Guide"
+	print "─────────────────────────────────────────────────────────────────────"
+	print " Usage: ${0} [OPTIONS]"
 	print ""
-	print "--------------------------------------------------------------------------------"
+	print " Available Options:"
+	print "  lunch            | -l    : Prepare the environment for the chosen device"
+	print "  info             | -i    : Display current kernel setup details"
+	print "  clean            | -c    : Remove kernel build artifacts"
+	print "  kernel           | -k    : Compile the Linux kernel image"
+	print "  kerneldeb        | -K    : Generate a Debian package for the Linux kernel"
+	print "  update_defconfig | -u    : Update the kernel configuration with the latest changes"
+	print "  help             | -h    : Display this usage guide"
+	print "─────────────────────────────────────────────────────────────────────"
 }
 
-if echo "${@}" | grep -wqE "help|-h"; then
+if [ "$1" == "-h" ] || [ "$1" == "help" ]; then
 	if [ -n "${2}" ] && [ "$(type -t usage"${2}")" == function ]; then
 		print "----------------------------------------------------------------"
 		print "--- ${2} Build Command ---"
@@ -60,31 +64,34 @@ fi
 
 OPTIONS=("${@:-kernel}")
 for option in "${OPTIONS[@]}"; do
-	print "Processing Option: $option"
+	print "Processing option: $option"
 	case ${option} in
 	*.mk)
 		if [ -f "${option}" ]; then
-			config=${option}
+			selected_config_file=${option}
 		else
-			config=$(find "${CFG_DIR}" -name "${option}")
-			print "Switching to board: ${config}"
-			if [ ! -f "${config}" ]; then
+			selected_config_file=$(find "${CFG_DIR}" -name "${option}")
+			print "Switching to board: ${selected_config_file}"
+			if [ ! -f "${selected_config_file}" ]; then
 				exit_with_error "Invalid board: ${option}"
 			fi
 		fi
-		DEVICE_MAKEFILE="${config}"
+		DEVICE_MAKEFILE="${selected_config_file}"
 		export DEVICE_MAKEFILE
 
-		ln -f "${DEVICE_MAKEFILE}" "${SCRIPT_DIR}"/vicharak/.device.mk
-		source "${SCRIPT_DIR}"/vicharak/.device.mk
+		ln -f "${DEVICE_MAKEFILE}" "${SCRIPT_DIR}"/.device.mk
+		source "${SCRIPT_DIR}"/.device.mk
 
 		print_info
 		;;
-	lunch|-l) lunch_device ;;
-	info|-i) print_info ;;
-	clean|-c) cleanup ;;
-	kernel|-k) check_lunch_device; build_kernel ;;
-	dtbs|-d)
+	lunch | -l) lunch_device ;;
+	info | -i) print_info ;;
+	clean | -c) cleanup ;;
+	kernel | -k)
+		check_lunch_device
+		build_kernel
+		;;
+	dtbs | -d)
 		if ! is_set "${DEVICE_ARCH}"; then
 			exit_with_error "Device architecture not set!"
 		fi
@@ -94,8 +101,8 @@ for option in "${OPTIONS[@]}"; do
 			exit_with_error "DTB build not supported for ${DEVICE_ARCH}"
 		fi
 		;;
-	kerneldeb|-K) build_kerneldeb ;;
-	update_defconfig|-u) update_defconfig ;;
+	kerneldeb | -K) build_kerneldeb ;;
+	update_defconfig | -u) update_defconfig ;;
 	*)
 		usage
 		exit_with_error "Invalid option: ${option}"
