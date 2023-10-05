@@ -406,7 +406,12 @@ function build_kernel() {
 	build_config
 
 	# shellcheck disable=SC2086
-	make ${kernel_args} && make ${kernel_args} dtbs
+	make ${kernel_args}
+
+	if [ -n "${DEVICE_DTB_FILE}" ]; then
+		# shellcheck disable=SC2086
+		make ${kernel_args} dtbs
+	fi
 
 	if is_enabled "${MODULES_BUILD}"; then
 		build_modules
