@@ -332,6 +332,11 @@ function build_config() {
 
 # Build kernel modules and create a GZIP compressed archive of the modules.
 function build_modules() {
+	if [[ ! -f "${OUT_DIR}"/.config ]]; then
+		source_toolchain
+		build_config
+	fi
+
 	# shellcheck disable=SC2086
 	make modules_install ${kernel_args} INSTALL_MOD_PATH="${OUT_DIR}"/modules_"${DEVICE_NAME}"
 	tar -czf "${OUT_DIR}"/modules_"${DEVICE_NAME}".tar.gz -C "${OUT_DIR}"/modules_"${DEVICE_NAME}" .
@@ -339,8 +344,10 @@ function build_modules() {
 
 # Build a Debian package for the kernel
 function build_kerneldeb() {
-	source_toolchain
-	build_config
+	if [[ ! -f "${OUT_DIR}"/.config ]]; then
+		source_toolchain
+		build_config
+	fi
 	build_kernel_deb_package
 }
 
@@ -372,9 +379,8 @@ function build_kernel_deb_package() {
 
 # Build device tree blobs (dtbs) for the kernel.
 function build_dtbs() {
-	source_toolchain
-
 	if [[ ! -f "${OUT_DIR}"/.config ]]; then
+		source_toolchain
 		build_config
 	fi
 
@@ -542,8 +548,5 @@ function lunch_device() {
 	if ! is_set "${DEVICE_DEFCONFIG}"; then
 		exit_with_error "Device defconfig not set!"
 	fi
-
-	source_toolchain
-	build_config
 }
 # End of script
