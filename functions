@@ -332,8 +332,8 @@ function build_config() {
 
 # Build kernel modules and create a GZIP compressed archive of the modules.
 function build_modules() {
+	source_toolchain
 	if [[ ! -f "${OUT_DIR}"/.config ]]; then
-		source_toolchain
 		build_config
 	fi
 
@@ -344,8 +344,8 @@ function build_modules() {
 
 # Build a Debian package for the kernel
 function build_kerneldeb() {
+	source_toolchain
 	if [[ ! -f "${OUT_DIR}"/.config ]]; then
-		source_toolchain
 		build_config
 	fi
 	build_kernel_deb_package
@@ -379,8 +379,8 @@ function build_kernel_deb_package() {
 
 # Build device tree blobs (dtbs) for the kernel.
 function build_dtbs() {
+	source_toolchain
 	if [[ ! -f "${OUT_DIR}"/.config ]]; then
-		source_toolchain
 		build_config
 	fi
 
@@ -408,7 +408,6 @@ function source_toolchain() {
 # optionally modules, kernel deb package, or pack it into a boot image.
 function build_kernel() {
 	source_toolchain
-
 	build_config
 
 	# shellcheck disable=SC2086
