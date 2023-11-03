@@ -62,8 +62,14 @@ function pack_image() {
 	mmd -i "${FILENAME}" ::/extlinux
 	mcopy -i "${FILENAME}" -s "${extlinux_dir}/extlinux.conf" ::/extlinux/extlinux.conf
 	mcopy -i "${FILENAME}" -s "${DEVICE_KERNEL_IMAGE_FILE}" ::/Image-"${KERNEL_VERSION}"
-	mcopy -i "${FILENAME}" -s "${KERNEL_DIR}"/logo.bmp ::
-	mcopy -i "${FILENAME}" -s "${KERNEL_DIR}"/logo_kernel.bmp ::
+
+	if [ -f "${KERNEL_DIR}"/logo.bmp ]; then
+		mcopy -i "${FILENAME}" -s "${KERNEL_DIR}"/logo.bmp ::
+	fi
+
+	if [ -f "${KERNEL_DIR}"/logo_kernel.bmp ]; then
+		mcopy -i "${FILENAME}" -s "${KERNEL_DIR}"/logo_kernel.bmp ::
+	fi
 
 	if [[ -d "${DEVICE_DTB_DIR}"/overlays ]]; then
 		mmd -i "${FILENAME}" ::/overlays
