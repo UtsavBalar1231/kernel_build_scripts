@@ -17,11 +17,11 @@ source "${SCRIPT_DIR}"/utils
 function create_extlinux_config() {
 	local extlinux_dir=${1}
 
-	echo "label Vicharak Linux Kernel" >"${extlinux_dir}"/extlinux.conf
+	echo "label Vicharak ${DEVICE_NAME} kernel" >"${extlinux_dir}"/extlinux.conf
 	# shellcheck disable=SC2129
-	echo "kernel /Image-${KERNEL_VERSION}" >>"${extlinux_dir}"/extlinux.conf
-	echo "fdt /${DEVICE_DTB_FILE}.dtb" >>"${extlinux_dir}"/extlinux.conf
-	echo "append earlycon=uart8250,mmio32,0xff1a0000 swiotlb=65536 coherent_pool=1m earlyprintk console=ttyS2,1500000n8 rw root=PARTUUID=614e0000-0000-4b53-8000-1d28000054a9 rootfstype=ext4 init=/sbin/init rootwait audit=0 splash" >>"${extlinux_dir}"/extlinux.conf
+	echo -e "\tkernel /Image-${KERNEL_VERSION}" >>"${extlinux_dir}"/extlinux.conf
+	echo -e "\tfdt /${DEVICE_DTB_FILE}.dtb" >>"${extlinux_dir}"/extlinux.conf
+	echo -e "\tappend earlycon=uart8250,mmio32,0xff1a0000 swiotlb=65536 coherent_pool=1m earlyprintk console=ttyS2,1500000n8 rw root=PARTUUID=614e0000-0000-4b53-8000-1d28000054a9 rootfstype=ext4 init=/sbin/init rootwait audit=0 splash" >>"${extlinux_dir}"/extlinux.conf
 }
 
 # Check if the boot image file exists and if its size is less than 30MB.
