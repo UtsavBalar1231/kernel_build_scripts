@@ -221,7 +221,7 @@ function build_clang() {
 	# check if clang is installed
 	if command -v clang &>/dev/null; then
 		local system_clang_version
-		system_clang_version=$(clang --version | head -n1 | rev | cut -d' ' -f1 | rev | cut -d'.' -f1)
+		system_clang_version=$(clang --version | head -n1 | awk '{print $3}' | cut -d'.' -f1)
 
 		if [[ ${system_clang_version} -lt ${DEFAULT_CLANG_VERSION} ]]; then
 			get_clang_toolchain "${clang_version}"
