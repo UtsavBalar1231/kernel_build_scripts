@@ -550,7 +550,7 @@ function lunch_device() {
 
 	set_device_config
 
-	cp "${SCRIPT_DIR}/${DEVICE_MAKEFILE}" "${SCRIPT_DIR}/.device.mk"
+	ln -sf "${SCRIPT_DIR}/${DEVICE_MAKEFILE}" "${SCRIPT_DIR}/.device.mk"
 
 	# shellcheck disable=SC1090,SC1091
 	source "${SCRIPT_DIR}/.device.mk"
