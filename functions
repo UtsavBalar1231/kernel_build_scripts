@@ -79,6 +79,10 @@ function pack_image() {
 		done
 	fi
 
+	if [ ! -f "${DEVICE_DTB_DIR}"/"${DEVICE_DTB_FILE}".dtb ]; then
+		exit_with_error "Device tree binary: ${DEVICE_DTB_FILE}.dtb not found!"
+	fi
+
 	mcopy -i "${FILENAME}" -s "${DEVICE_DTB_DIR}"/"${DEVICE_DTB_FILE}".dtb ::
 
 	delete_dir "${extlinux_dir}"
