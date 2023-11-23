@@ -17,9 +17,11 @@ source "${SCRIPT_DIR}"/utils
 function create_extlinux_config() {
 	local extlinux_dir=${1}
 
-	echo "label Vicharak ${DEVICE_NAME} kernel" >"${extlinux_dir}"/extlinux.conf
+	echo \
+		"label Vicharak ${DEVICE_NAME} kernel" >"${extlinux_dir}"/extlinux.conf
 	# shellcheck disable=SC2129
-	echo -e "\tkernel /Image-${KERNEL_VERSION}" >>"${extlinux_dir}"/extlinux.conf
+	echo -e \
+		"\tkernel /Image-${KERNEL_VERSION}" >>"${extlinux_dir}"/extlinux.conf
 	echo -e "\tfdt /${DEVICE_DTB_FILE}.dtb" >>"${extlinux_dir}"/extlinux.conf
 	echo -e "\tappend earlycon=uart8250,mmio32,0xff1a0000 swiotlb=65536 coherent_pool=1m earlyprintk console=ttyS2,1500000n8 rw root=PARTUUID=614e0000-0000-4b53-8000-1d28000054a9 rootfstype=ext4 init=/sbin/init rootwait audit=0 splash" >>"${extlinux_dir}"/extlinux.conf
 }
@@ -48,7 +50,8 @@ function pack_image() {
 		DEVICE_KERNEL_IMAGE_FILE_SIZE=50
 	fi
 
-	mkfs.fat -n "boot" -C "${FILENAME}" $((DEVICE_KERNEL_IMAGE_FILE_SIZE * 1024))
+	mkfs.fat \
+		-n "boot" -C "${FILENAME}" $((DEVICE_KERNEL_IMAGE_FILE_SIZE * 1024))
 
 	extlinux_dir=$(mktemp -d)
 	create_extlinux_config "${extlinux_dir}"
@@ -60,8 +63,10 @@ function pack_image() {
 	fi
 
 	mmd -i "${FILENAME}" ::/extlinux
-	mcopy -i "${FILENAME}" -s "${extlinux_dir}/extlinux.conf" ::/extlinux/extlinux.conf
-	mcopy -i "${FILENAME}" -s "${DEVICE_KERNEL_IMAGE_FILE}" ::/Image-"${KERNEL_VERSION}"
+	mcopy -i "${FILENAME}" -s \
+		"${extlinux_dir}/extlinux.conf" ::/extlinux/extlinux.conf
+	mcopy -i "${FILENAME}" -s \
+		"${DEVICE_KERNEL_IMAGE_FILE}" ::/Image-"${KERNEL_VERSION}"
 
 	if [ -f "${KERNEL_DIR}"/logo.bmp ]; then
 		mcopy -i "${FILENAME}" -s "${KERNEL_DIR}"/logo.bmp ::
@@ -131,56 +136,59 @@ function new_system_glibc() {
 #   $5: Repository name
 #   $6: Destination directory
 function download_toolchain() {
-	local toolchain_name="$1"
-	local toolchain_version="$2"
+	local tc_name="$1"
+	local tc_version="$2"
 	local repo_source="$3"
 	local repo_owner="$4"
 	local repo_name="$5"
-	local destination_dir="$6"
+	local dest_dir="$6"
 
-	if [[ ! -d "${destination_dir}" ]]; then
-		mkdir -p "${destination_dir}"
+	if [[ ! -d "${dest_dir}" ]]; then
+		mkdir -p "${dest_dir}"
 	fi
 
-	local toolchain_file="${destination_dir}/${toolchain_name}-${toolchain_version}.tar.gz"
+	local tc_file="${dest_dir}/${tc_name}-${tc_version}.tar.gz"
 
-	if [[ -d "${destination_dir}" && -f "${toolchain_file}" ]]; then
-		print "${toolchain_name} ${toolchain_version} already downloaded."
+	if [[ -d "${dest_dir}" && -f "${tc_file}" ]]; then
+		print "${tc_name} ${tc_version} already downloaded."
 	else
-		print "Downloading ${toolchain_name} ${toolchain_version}..."
+		print "Downloading ${tc_name} ${tc_version}..."
 
-		local download_url=""
+		local download_url
+		local git_url
 
+		git_url="https://gitlab.com/${repo_owner}/${repo_name}"
 		if [[ "${repo_source}" == "github" ]]; then
-			download_url="https://github.com/${repo_owner}/${repo_name}/archive/${toolchain_version}.tar.gz"
+			download_url="${git_url}/archive/${tc_version}.tar.gz"
 		elif [[ "${repo_source}" == "gitlab" ]]; then
-			download_url="https://gitlab.com/${repo_owner}/${repo_name}/-/archive/${toolchain_version}/${repo_name}-${toolchain_version}.tar.gz"
+			download_url="${git_url}/-/archive/${tc_version}/${repo_name}-${tc_version}.tar.gz"
 		else
 			exit_with_error "Invalid repository source: ${repo_source}"
 		fi
 
-		wget -O "${toolchain_file}" "${download_url}" -q --show-progress --progress=bar:force 2>&1
+		wget -O "${tc_file}" \
+			"${download_url}" -q --show-progress --progress=bar:force 2>&1
 
 		# shellcheck disable=SC2181
 		if [[ $? -ne 0 ]]; then
-			exit_with_error "Failed to download ${toolchain_name} ${toolchain_version}."
+			exit_with_error "Failed to download ${tc_name} ${tc_version}."
 		fi
 
-		print "Downloaded ${toolchain_name} ${toolchain_version} successfully."
+		print "Downloaded ${tc_name} ${tc_version} successfully."
 
-		print "Extracting ${toolchain_name} ${toolchain_version}..."
+		print "Extracting ${tc_name} ${tc_version}..."
 
-		tar -xzf "${toolchain_file}" -C "${destination_dir}"
+		tar -xzf "${tc_file}" -C "${dest_dir}"
 		# shellcheck disable=SC2181
 		if [[ $? -ne 0 ]]; then
-			exit_with_error "Failed to extract ${toolchain_name} ${toolchain_version}."
+			exit_with_error "Failed to extract ${tc_name} ${tc_version}."
 		fi
 
-		mv "${destination_dir}"/"${repo_name}"-"${toolchain_version}"/* "${destination_dir}"
-		delete_file "${toolchain_file}"
-		delete_dir "${destination_dir}"/"${repo_name}"-"${toolchain_version}"
+		mv "${dest_dir}"/"${repo_name}"-"${tc_version}"/* "${dest_dir}"
+		delete_file "${tc_file}"
+		delete_dir "${dest_dir}"/"${repo_name}"-"${tc_version}"
 
-		print "Extracted ${toolchain_name} ${toolchain_version} successfully."
+		print "Extracted ${tc_name} ${tc_version} successfully."
 	fi
 }
 
@@ -198,13 +206,15 @@ function get_clang_toolchain() {
 	fi
 
 	if [[ ! -d "${CLANG_DIR}" ]]; then
-		download_toolchain "Clang ${clang_version}" "${clang_version}" \
+		download_toolchain "Clang-${clang_version}" "${clang_version}" \
 			"gitlab" "ThankYouMario" "android_prebuilts_clang-standalone" \
 			"${CLANG_DIR}"
 	else
 		local local_clang_version
 		if [[ -f "${CLANG_DIR}"/AndroidVersion.txt ]]; then
-			local_clang_version=$(sed '2,$d' "${CLANG_DIR}"/AndroidVersion.txt | cut -d '.' -f 1)
+			local_clang_version=$(
+				sed '2,$d' "${CLANG_DIR}"/AndroidVersion.txt | cut -d '.' -f 1
+			)
 		fi
 
 		if [[ ${local_clang_version} -ne ${clang_version} ]] ||
@@ -358,16 +368,25 @@ function build_config() {
 		arch="${DEVICE_ARCH}"
 	fi
 
-	if [[ ! -f "${KERNEL_DIR}/arch/${arch}/configs/${DEVICE_CONFIG_FRAGMENT}" ]]; then
+	local cfg_fragment
+	cfg_fragment="${KERNEL_DIR}/arch/${arch}/configs/${DEVICE_CONFIG_FRAGMENT}"
+
+	if [[ ! -f "${cfg_fragment}" ]]; then
 		print "----------------------------------------------------------------"
 		print "${DEVICE_CONFIG_FRAGMENT} File not found!"
 		print "----------------------------------------------------------------"
 	else
-		cat "${KERNEL_DIR}/arch/${arch}/configs/${DEVICE_CONFIG_FRAGMENT}" >>"${OUT_DIR}"/.config
+		cat "${cfg_fragment}" >>"${OUT_DIR}"/.config
 	fi
 
 	if is_enabled "${PERF_BUILD}"; then
-		cat "${KERNEL_DIR}"/arch/"${arch}"/configs/rockchip_performance.config >>"${OUT_DIR}"/.config
+		if [ -f "${KERNEL_DIR}/arch/${arch}/configs/performance.config" ]; then
+			cat \
+				"${KERNEL_DIR}"/arch/"${arch}"/configs/performance.config \
+				>>"${OUT_DIR}"/.config
+		else
+			exit_with_error "Performance config not found!"
+		fi
 	fi
 }
 
@@ -379,8 +398,10 @@ function build_modules() {
 	fi
 
 	# shellcheck disable=SC2086
-	make modules_install ${kernel_args} INSTALL_MOD_PATH="${OUT_DIR}"/modules_"${DEVICE_NAME}"
-	tar -czf "${OUT_DIR}"/modules_"${DEVICE_NAME}".tar.gz -C "${OUT_DIR}"/modules_"${DEVICE_NAME}" .
+	make ${kernel_args} \
+		modules_install INSTALL_MOD_PATH="${OUT_DIR}"/modules_"${DEVICE_NAME}"
+	tar -czf "${OUT_DIR}"/modules_"${DEVICE_NAME}".tar.gz \
+		-C "${OUT_DIR}"/modules_"${DEVICE_NAME}" .
 }
 
 # Build a Debian package for the kernel
@@ -491,7 +512,8 @@ function update_defconfig() {
 		arch="${DEVICE_ARCH}"
 	fi
 
-	mv "${OUT_DIR}"/defconfig "${KERNEL_DIR}"/arch/"${arch}"/configs/"${DEVICE_DEFCONFIG}"
+	mv "${OUT_DIR}"/defconfig \
+		"${KERNEL_DIR}"/arch/"${arch}"/configs/"${DEVICE_DEFCONFIG}"
 	print "----------------------------------------------------------------"
 	print "Updated ${DEVICE_DEFCONFIG} with savedefconfig"
 	print "----------------------------------------------------------------"
@@ -554,18 +576,19 @@ function print_info() {
 # Allow the user to select a device configuration file interactively.
 function set_device_config() {
 	print "----------------------------------------------------------------"
-	cd "${SCRIPT_DIR}" || exit 1
+	pushd "${SCRIPT_DIR}" || exit 1
 	printf "\e[1;32m"
 	select device in *.mk; do
 		DEVICE_MAKEFILE="${device}"
 		break
 	done
-	cd "${SCRIPT_DIR}" || exit 1
+	popd || exit 1
 	printf "\e[0m"
 	print "----------------------------------------------------------------"
 }
 
-# Check if a device configuration file exists; if not, prompt the user to set one.
+# Check if a device configuration file exists; if not,
+# prompt the user to set one.
 function check_lunch_device() {
 	if [[ ! -f "${SCRIPT_DIR}/.device.mk" ]]; then
 		lunch_device
