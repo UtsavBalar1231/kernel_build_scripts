@@ -215,13 +215,35 @@ function get_clang_toolchain() {
 # Set up environment variables for building with Clang,
 # including the path to the toolchain.
 function build_clang() {
+	local available_clang_versions=()
 	local clang_version
-	clang_version=${DEFAULT_CLANG_VERSION}
+
+	if is_set "${DEVICE_CLANG_VERSION}"; then
+		if [[ ! ${DEVICE_CLANG_VERSION} =~ ^[0-9]+$ ]]; then
+			exit_with_error "Invalid clang version: ${DEVICE_CLANG_VERSION}"
+		fi
+
+		if [[ ${DEVICE_CLANG_VERSION} -lt ${DEFAULT_CLANG_VERSION} ]]; then
+			exit_with_error \
+				"Invalid clang version, must be >= ${DEFAULT_CLANG_VERSION}"
+		fi
+
+		clang_version=${DEVICE_CLANG_VERSION}
+	else
+		clang_version=${DEFAULT_CLANG_VERSION}
+	fi
+
+	available_clang_versions=(12 13 14 15 16 17)
+	if [[ ! " ${available_clang_versions[*]} " =~ ${clang_version} ]]; then
+		exit_with_error "Invalid clang version: ${clang_version}"
+	fi
 
 	# check if clang is installed
 	if command -v clang &>/dev/null; then
 		local system_clang_version
-		system_clang_version=$(clang --version | head -n1 | awk '{print $3}' | cut -d'.' -f1)
+		system_clang_version=$(
+			clang --version | head -n1 | awk '{print $3}' | cut -d'.' -f1
+		)
 
 		if [[ -z "${system_clang_version}" ]]; then
 			exit_with_error "Failed to get clang version"

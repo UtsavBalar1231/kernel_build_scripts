@@ -44,7 +44,7 @@ export KERNEL_VERSION
 export CLANG_DIR=${KERNEL_DIR}/../clang
 
 # Default Clang version
-export DEFAULT_CLANG_VERSION=17
+export DEFAULT_CLANG_VERSION=12
 
 # Default GCC toolchain directory
 export GCC64_DIR=${KERNEL_DIR}/../gcc-"${DEVICE_ARCH}"

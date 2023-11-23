@@ -26,3 +26,5 @@ MODULES_BUILD=true
 DEB_BUILD=false
 # Pack kernel image using extlinux
 PACK_KERNEL_BUILD=true
+# Device specific clang version
+DEVICE_CLANG_VERSION="17"
