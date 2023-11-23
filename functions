@@ -445,10 +445,9 @@ function build_kernel() {
 
 # Update the kernel configuration (defconfig) with savedefconfig.
 function update_defconfig() {
-	if is_enabled "${CLANG_BUILD}"; then
-		build_clang
-	else
-		build_gcc
+	source_toolchain
+	if [[ ! -f "${OUT_DIR}"/.config ]]; then
+		build_config
 	fi
 
 	# shellcheck disable=SC2086
