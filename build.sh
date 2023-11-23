@@ -85,24 +85,39 @@ for option in "${OPTIONS[@]}"; do
 		print_info
 		;;
 	lunch | -l) lunch_device ;;
-	info | -i) print_info ;;
-	clean | -c) cleanup ;;
+	info | -i)
+		check_lunch_device
+		print_info
+		;;
+	clean | -c)
+		check_lunch_device
+		cleanup
+		;;
 	kernel | -k)
 		check_lunch_device
 		build_kernel
 		;;
 	dtbs | -d)
+		check_lunch_device
 		if ! is_set "${DEVICE_ARCH}"; then
 			exit_with_error "Device architecture not set!"
 		fi
+
 		if [ "${DEVICE_ARCH}" == "arm64" ]; then
+
 			build_dtbs
 		else
 			exit_with_error "DTB build not supported for ${DEVICE_ARCH}"
 		fi
 		;;
-	kerneldeb | -K) build_kerneldeb ;;
-	update_defconfig | -u) update_defconfig ;;
+	kerneldeb | -K)
+		check_lunch_device
+		build_kerneldeb
+		;;
+	update_defconfig | -u)
+		check_lunch_device
+		update_defconfig
+		;;
 	*)
 		usage
 		exit_with_error "Invalid option: ${option}"
