@@ -326,11 +326,14 @@ function build_gcc() {
 		print "Using System GCC"
 		print "----------------------------------------------------------------"
 
-		if ! is_set ${CROSS_COMPILE} && [[ "${DEVICE_ARCH}" == "arm64" ]]; then
+		if ! is_set ${CROSS_COMPILE} &&
+			command -v aarch64-linux-gnu-gcc &>/dev/null &&
+			[[ "${DEVICE_ARCH}" == "arm64" ]]; then
 			export CROSS_COMPILE=aarch64-linux-gnu-
 		fi
 
-		if command -v gcc-arm-linux-gnueabi &>/dev/null && [[ "${DEVICE_ARCH}" == "arm64" ]]; then
+		if command -v gcc-arm-linux-gnueabi &>/dev/null &&
+			[[ "${DEVICE_ARCH}" == "arm64" ]]; then
 			export CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
 		fi
 
