@@ -415,6 +415,14 @@ function build_kerneldeb() {
 
 # Build a Debian package for the kernel with the specified parameters.
 function build_kernel_deb_package() {
+	if is_set "${HOST_SYSTEM}" && [ "${HOST_SYSTEM}" != "debian" ]; then
+		exit_with_error "Unsupported OS: ${HOST_SYSTEM}, Disable 'BUILD_DEB' to continue"
+	fi
+
+	if ! command -v dpkg-buildpackage &>/dev/null; then
+		exit_with_error "dpkg-buildpackage not found!"
+	fi
+
 	local build_id
 	local deb_files
 	local build_device_name
@@ -527,6 +535,10 @@ function print_info() {
 	else
 		lunch_device
 	fi
+
+	print "----------------------------------------------------------------"
+	print "Host System: ${HOST_SYSTEM}"
+	print "----------------------------------------------------------------"
 
 	print "----------------------------------------------------------------"
 	print "Device Information"

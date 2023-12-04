@@ -52,3 +52,7 @@ export GCC32_DIR=${KERNEL_DIR}/../gcc32
 
 # set PS3 prompt
 export PS3="Select device: "
+
+# Host system
+HOST_SYSTEM=$(grep "^ID=" /etc/os-release | cut -d'=' -f2)
+export HOST_SYSTEM
