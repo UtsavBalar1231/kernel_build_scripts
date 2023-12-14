@@ -28,4 +28,5 @@ DEB_BUILD=true
 # Pack kernel image using extlinux
 PACK_KERNEL_BUILD=true
 # Device specific clang version
-DEVICE_CLANG_VERSION="17"
+CLANG_DIR="/home/utsav/dev/toolchains/clang-18.0.0"
+DEVICE_CLANG_VERSION="18"
