@@ -30,3 +30,5 @@ PACK_KERNEL_BUILD=true
 # Device specific clang version
 CLANG_DIR="/home/utsav/dev/toolchains/clang-18.0.0"
 DEVICE_CLANG_VERSION="18"
+# Set cmdline (mainline)
+DEVICE_CMDLINE="root=/dev/mmcblk1p2 rootwait rootfstype=ext4 splash plymouth.ignore-serial-consoles console=ttyS2,1500000 console=tty1 consoleblank=0 loglevel=7 cgroup_enable=cpuset cgroup_memory=1 cgroup_enable=memory swapaccount=1"
