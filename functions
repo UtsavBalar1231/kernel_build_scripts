@@ -217,8 +217,8 @@ function get_clang_toolchain() {
 	else
 		local local_clang_version
 		local_clang_version=$(
-			find "${CLANG_DIR}"/bin -maxdepth 1 -regex "bin/clang-[0-9]+" |
-				awk -F'-' '{print $2}'
+			find "${CLANG_DIR}"/bin -maxdepth 1 -regex ".*/clang-[0-9]+" |
+				awk -F'-' '{print $3}'
 		)
 
 		if [[ -z "${local_clang_version}" ]]; then
@@ -258,8 +258,8 @@ function check_clang_toolchain() {
 		if is_set "${CLANG_DIR}"; then
 			# get the clang version from the ${CLANG_DIR}/bin/clang-[0-9]+
 			clang_version=$(
-				find "${CLANG_DIR}"/bin -maxdepth 1 -regex "bin/clang-[0-9]+" |
-					awk -F'-' '{print $2}'
+				find "${CLANG_DIR}"/bin -maxdepth 1 -regex ".*/clang-[0-9]+" |
+					awk -F'-' '{print $3}'
 			)
 
 			if [[ -z "${clang_version}" ]]; then
@@ -315,7 +315,7 @@ function build_clang() {
 	# set up environment variables, so standalone clang can be used
 	if is_set "${CLANG_DIR}" && [ -d "${CLANG_DIR}" ]; then
 		print "----------------------------------------------------------------"
-		print "Using standalone clang toolchain: ${clang_version}"
+		print "Using standalone clang toolchain: v${clang_version}"
 		print "----------------------------------------------------------------"
 
 		PATH="${CLANG_DIR}"/bin:${PATH}
