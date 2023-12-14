@@ -211,10 +211,13 @@ function get_clang_toolchain() {
 			"${CLANG_DIR}"
 	else
 		local local_clang_version
-		if [[ -f "${CLANG_DIR}"/AndroidVersion.txt ]]; then
-			local_clang_version=$(
-				sed '2,$d' "${CLANG_DIR}"/AndroidVersion.txt | cut -d '.' -f 1
-			)
+		local_clang_version=$(
+			find "${CLANG_DIR}"/bin -maxdepth 1 -regex "bin/clang-[0-9]+" |
+				awk -F'-' '{print $2}'
+		)
+
+		if [[ -z "${local_clang_version}" ]]; then
+			exit_with_error "Failed to find local clang version"
 		fi
 
 		if [[ ${local_clang_version} -ne ${clang_version} ]] ||
@@ -226,10 +229,9 @@ function get_clang_toolchain() {
 	fi
 }
 
-# Set up environment variables for building with Clang,
-# including the path to the toolchain.
-function build_clang() {
+function check_clang_toolchain() {
 	local available_clang_versions=()
+	available_clang_versions=(12 13 14 15 16 17 18)
 	local clang_version
 
 	if is_set "${DEVICE_CLANG_VERSION}"; then
@@ -242,12 +244,35 @@ function build_clang() {
 				"Invalid clang version, must be >= ${DEFAULT_CLANG_VERSION}"
 		fi
 
+		if [[ ! " ${available_clang_versions[*]} " =~ ${DEVICE_CLANG_VERSION} ]]; then
+			exit_with_error "Invalid DEVICE_CLANG_VERSION: \
+				${DEVICE_CLANG_VERSION}, supported versions: \
+				${available_clang_versions[*]}"
+		fi
+
+		if is_set "${CLANG_DIR}"; then
+			# get the clang version from the ${CLANG_DIR}/bin/clang-[0-9]+
+			clang_version=$(
+				find "${CLANG_DIR}"/bin -maxdepth 1 -regex "bin/clang-[0-9]+" |
+					awk -F'-' '{print $2}'
+			)
+
+			if [[ -z "${clang_version}" ]]; then
+				exit_with_error "Failed to find clang version from ${CLANG_DIR}/bin"
+			fi
+
+			if [[ ${clang_version} -ne ${DEVICE_CLANG_VERSION} ]]; then
+				exit_with_error \
+					"Invalid DEVICE_CLANG_VERSION: ${DEVICE_CLANG_VERSION}, \
+						found ${CLANG_DIR}/bin/clang-${clang_version}"
+			fi
+		fi
+
 		clang_version=${DEVICE_CLANG_VERSION}
 	else
 		clang_version=${DEFAULT_CLANG_VERSION}
 	fi
 
-	available_clang_versions=(12 13 14 15 16 17)
 	if [[ ! " ${available_clang_versions[*]} " =~ ${clang_version} ]]; then
 		exit_with_error "Invalid clang version: ${clang_version}"
 	fi
@@ -273,8 +298,17 @@ function build_clang() {
 		get_clang_toolchain "${clang_version}"
 	fi
 
+	echo "${clang_version}"
+}
+
+# Set up environment variables for building with Clang,
+# including the path to the toolchain.
+function build_clang() {
+	local clang_version
+	clang_version=$(check_clang_toolchain)
+
 	# set up environment variables, so standalone clang can be used
-	if [ -d "${CLANG_DIR}" ]; then
+	if is_set "${CLANG_DIR}" && [ -d "${CLANG_DIR}" ]; then
 		print "----------------------------------------------------------------"
 		print "Using standalone clang toolchain: ${clang_version}"
 		print "----------------------------------------------------------------"
@@ -285,8 +319,16 @@ function build_clang() {
 		export PATH
 	fi
 
-	if ! is_set "${CROSS_COMPILE}" && [[ "${DEVICE_ARCH}" == "arm64" ]]; then
-		export CROSS_COMPILE=aarch64-linux-gnu-
+	if ! is_set "${CROSS_COMPILE}"; then
+		local host_arch
+		host_arch=$(uname -m)
+
+		case "${host_arch}" in
+		aarch64 | arm*) ;;
+		*)
+			export CROSS_COMPILE=aarch64-linux-gnu-
+			;;
+		esac
 	fi
 
 	kernel_args="ARCH=${DEVICE_ARCH} \
@@ -324,7 +366,7 @@ function build_gcc() {
 			fi
 		fi
 
-		if ! is_set ${CROSS_COMPILE} && [[ "${DEVICE_ARCH}" == "arm64" ]]; then
+		if ! is_set "${CROSS_COMPILE}" && [[ "${DEVICE_ARCH}" == "arm64" ]]; then
 			export CROSS_COMPILE=aarch64-linux-gnu-
 		fi
 
@@ -336,7 +378,7 @@ function build_gcc() {
 		print "Using System GCC"
 		print "----------------------------------------------------------------"
 
-		if ! is_set ${CROSS_COMPILE} &&
+		if ! is_set "${CROSS_COMPILE}" &&
 			command -v aarch64-linux-gnu-gcc &>/dev/null &&
 			[[ "${DEVICE_ARCH}" == "arm64" ]]; then
 			export CROSS_COMPILE=aarch64-linux-gnu-
