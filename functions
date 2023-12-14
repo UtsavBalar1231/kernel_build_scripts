@@ -23,7 +23,12 @@ function create_extlinux_config() {
 	echo -e \
 		"\tkernel /Image-${KERNEL_VERSION}" >>"${extlinux_dir}"/extlinux.conf
 	echo -e "\tfdt /${DEVICE_DTB_FILE}.dtb" >>"${extlinux_dir}"/extlinux.conf
-	echo -e "\tappend earlycon=uart8250,mmio32,0xff1a0000 swiotlb=65536 coherent_pool=1m earlyprintk console=ttyS2,1500000n8 rw root=PARTUUID=614e0000-0000-4b53-8000-1d28000054a9 rootfstype=ext4 init=/sbin/init rootwait audit=0 splash" >>"${extlinux_dir}"/extlinux.conf
+	if is_set "${DEVICE_CMDLINE}"; then
+		echo -e "\tappend ${DEVICE_CMDLINE}" >>"${extlinux_dir}"/extlinux.conf
+	else
+
+		echo -e "\tappend earlycon=uart8250,mmio32,0xff1a0000 swiotlb=65536 coherent_pool=1m earlyprintk console=ttyS2,1500000n8 rw root=PARTUUID=614e0000-0000-4b53-8000-1d28000054a9 rootfstype=ext4 init=/sbin/init rootwait audit=0 splash" >>"${extlinux_dir}"/extlinux.conf
+	fi
 }
 
 # Check if the boot image file exists and if its size is less than 30MB.
