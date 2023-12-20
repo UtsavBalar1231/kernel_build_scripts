@@ -405,9 +405,6 @@ function build_gcc() {
 # Create the kernel configuration (defconfig) based on the performance options
 # and merge it with the config fragment if specified.
 function build_config() {
-	# shellcheck disable=SC2086
-	make ${kernel_args} "${DEVICE_DEFCONFIG}"
-
 	local arch
 	if [[ "${DEVICE_ARCH}" == "x86_64" ]]; then
 		arch="x86"
@@ -415,26 +412,31 @@ function build_config() {
 		arch="${DEVICE_ARCH}"
 	fi
 
-	local cfg_fragment
-	cfg_fragment="${KERNEL_DIR}/arch/${arch}/configs/${DEVICE_CONFIG_FRAGMENT}"
+	local cfg_fragment=()
 
-	if [[ ! -f "${cfg_fragment}" ]]; then
-		print "----------------------------------------------------------------"
-		print "${DEVICE_CONFIG_FRAGMENT} File not found!"
-		print "----------------------------------------------------------------"
-	else
-		cat "${cfg_fragment}" >>"${OUT_DIR}"/.config
+	if is_set "${DEVICE_CONFIG_FRAGMENT}"; then
+		if [[ -f "${KERNEL_DIR}/arch/${arch}/configs/${DEVICE_CONFIG_FRAGMENT}" ]]; then
+			cfg_fragment=("${DEVICE_CONFIG_FRAGMENT}")
+		else
+			print "----------------------------------------------------------------"
+			print "${DEVICE_CONFIG_FRAGMENT} File not found!"
+			print "----------------------------------------------------------------"
+		fi
 	fi
 
 	if is_enabled "${PERF_BUILD}"; then
 		if [ -f "${KERNEL_DIR}/arch/${arch}/configs/performance.config" ]; then
-			cat \
-				"${KERNEL_DIR}"/arch/"${arch}"/configs/performance.config \
-				>>"${OUT_DIR}"/.config
+			cfg_fragment+=("performance.config")
 		else
 			exit_with_error "Performance config not found!"
 		fi
 	fi
+
+	print "----------------------------------------------------------------"
+	print "Using config: ${DEVICE_DEFCONFIG} with config fragment: ${cfg_fragment[*]}"
+	print "----------------------------------------------------------------"
+	# shellcheck disable=SC2086
+	make ${kernel_args} "${DEVICE_DEFCONFIG}" "${cfg_fragment[*]}"
 }
 
 # Build kernel modules and create a GZIP compressed archive of the modules.
